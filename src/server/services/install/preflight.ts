@@ -3,10 +3,10 @@
  * Website: https://dsh-plugin.org
  * GitHub: https://github.com/dshplugin/dsh-plugin-hub
  *
- * 安装前预检：对 GitHub 源的插件，检查其分发（codeload tarball）里是否
- * 真的包含 package.json 声明的入口文件（main / exports["."].default）。
- * git 分发常不提交构建产物（lib/ 等），这类残缺包装完会让宿主重启加载插件树时
- * ERR_MODULE_NOT_FOUND 直接崩溃 —— 预检在动手安装前就把它们拦下，避免白装一次。
+ * 安装前预检：对 GitHub 源的插件，检查其分发（codeload tarball）里是否真的包含
+ * package.json 声明的文件（main / exports["."] / dsh.bundle.patch）。git 分发常不提交
+ * 构建产物（lib/ 等），这类残缺包装完会让宿主重启加载插件树时 ERR_MODULE_NOT_FOUND
+ * 直接崩溃 —— 预检在动手安装前就把它们拦下，避免白装一次。
  * npm 包信任 registry 的完整性，直接放行；任何无法预检的情况也放行，交给装后
  * 校验（verifyInstalledEntry）兜底，保证预检自身失败不会卡死安装流程。
  */
@@ -19,7 +19,7 @@ import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import { githubRefOf, githubRepoOf } from '../profile/profile.ts'
 import { githubReleaseTarget } from './release-target.ts'
-import { resolvePackageEntry } from './package-entry.ts'
+import { requiredDistributionFiles } from './package-entry.ts'
 
 const execFileAsync = promisify(execFile)
 
@@ -27,7 +27,8 @@ const execFileAsync = promisify(execFile)
  *  否则 `/install` 请求永远不返回、任务不入队、前端进度卡 0%。超时后放行（交给装后校验）。 */
 const PREFLIGHT_TIMEOUT_MS = 15_000
 
-/** 预检结果：ok=false 表示分发改入口文件缺失，missing 为该文件在包内的相对路径；
+/** 预检结果：ok=false 表示分发改 package.json 声明的文件（入口或 bundle 补丁），
+ *  missing 为该文件在包内的相对路径；
  *  name 为 git 分发包 package.json 声明的包名（非 git 目标/无法确定时为 null），
  *  供安装路由做「包名冲突」检测 —— 同名包名已被其他来源占用时，pnpm 装前必然撞车，
  *  需要把晦涩的 CLI 报错转成明确的拦截。 */
@@ -57,9 +58,11 @@ export async function preflightTarget(target: string): Promise<PreflightResult> 
     const rootPrefix = rootPackage.slice(0, -'package.json'.length)
     const meta = await readTarJson(tar, rootPackage)
     if (meta === null) return { ok: true, missing: null, name: null }
-    const entry = resolvePackageEntry(meta)
-    const inTar = await hasTarEntry(tar, `${rootPrefix}${entry}`)
-    return { ok: inTar, missing: inTar ? null : entry, name: typeof meta.name === 'string' ? meta.name : null }
+    // 只校验作者声明过的文件：没声明入口的包（只挂技能的 bundle）没有可缺失的入口，
+    // 它的分发是否完整由 dsh.bundle.patch 是否在包里决定。
+    const required = requiredDistributionFiles(meta).map((file) => `${rootPrefix}${file}`)
+    const missing = missingDistributionFileOfTarList(await tarListing(tar), required)
+    return { ok: missing === null, missing, name: typeof meta.name === 'string' ? meta.name : null }
   } catch {
     return { ok: true, missing: null, name: null }
   } finally {
@@ -125,10 +128,29 @@ export function rootPackageEntryOfTarList(listing: string): string | null {
   return candidates.length === 1 ? candidates[0] : null
 }
 
+/**
+ * 清单里第一个缺失的必需文件（成员名带包根前缀，由调用方拼好），全部都在则为 null。
+ * 清单不可读（tar 缺失/解压失败）时按第一个必需文件缺失处理：与逐文件查询时
+ * 「查不到就是缺」的判定一致，宁可拦下一次可疑安装，也不放一个空包过去。
+ * Exported for a small parser regression test.
+ */
+export function missingDistributionFileOfTarList(listing: string | null, required: string[]): string | null {
+  if (required.length === 0) return null
+  if (listing === null) return required[0]
+  const present = new Set(listing.split(/\r?\n/))
+  return required.find((file) => !present.has(file)) ?? null
+}
+
 async function rootPackageEntry(tar: string): Promise<string | null> {
+  const listing = await tarListing(tar)
+  return listing === null ? null : rootPackageEntryOfTarList(listing)
+}
+
+/** tar 成员清单；`tar` 执行失败时返回 null（调用方按无法判定处理）。 */
+async function tarListing(tar: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync('tar', ['-tzf', tar], { maxBuffer: 16 * 1024 * 1024 })
-    return rootPackageEntryOfTarList(stdout)
+    return stdout
   } catch {
     return null
   }
@@ -141,15 +163,5 @@ async function readTarJson(tar: string, entry: string): Promise<Record<string, u
     return JSON.parse(stdout) as Record<string, unknown>
   } catch {
     return null
-  }
-}
-
-/** 检查 tarball 内是否存在指定 entry。 */
-async function hasTarEntry(tar: string, entry: string): Promise<boolean> {
-  try {
-    const { stdout } = await execFileAsync('tar', ['-tzf', tar, entry], { maxBuffer: 1024 * 1024 })
-    return stdout.split(/\r?\n/).some((line) => line === entry)
-  } catch {
-    return false
   }
 }

@@ -8,7 +8,7 @@
  * 输出流式收集到任务上；卸载成功时尝试从运行中 loader 即时停用（见 loader.ts）。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { resolvePackageEntry } from './package-entry.ts'
+import { requiredDistributionFiles } from './package-entry.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { InstallResult, InstallTask, Invocation, QueueItem } from './install-types.ts'
@@ -625,10 +625,12 @@ function spawnMutation(options: {
 }
 
 /**
- * 安装后校验已装包的入口文件（package.json 的 main / exports["."].default）是否真实存在。
- * git: 分发常不提交构建产物（lib/ 等），pnpm 装完没有报错，但宿主重启加载插件树时会
- * ERR_MODULE_NOT_FOUND 直接崩溃、网页打不开 —— 这里在登记「待重启」前就把这类残缺包拦下。
- * 返回 { name, missing }：name 为空表示无法定位目标包（跳过校验）；missing 为缺失的入口路径。
+ * 安装后校验已装包里 package.json 声明的文件（main / exports["."].default 与
+ * dsh.bundle.patch）是否真实存在。git: 分发常不提交构建产物（lib/ 等），pnpm 装完没有
+ * 报错，但宿主重启加载插件树时会 ERR_MODULE_NOT_FOUND 直接崩溃、网页打不开 —— 这里在
+ * 登记「待重启」前就把这类残缺包拦下。没有声明过的文件不在这里追究：没声明入口的
+ * bundle 包（只挂技能）本来就不需要入口，宿主读的是它的 package.json 与声明的补丁。
+ * 返回 { name, missing }：name 为空表示无法定位目标包（跳过校验）；missing 为缺失文件的路径。
  */
 export function verifyInstalledEntry(profile: string, target: string): { name: string | null; missing: string | null } {
   let profilePkg: Record<string, unknown> | null = null
@@ -645,21 +647,20 @@ export function verifyInstalledEntry(profile: string, target: string): { name: s
     : deps[target] !== undefined ? target : Object.keys(deps).find((k) => deps[k] === target)
   if (!name) return { name: null, missing: null }
   const pkgDir = join(profileDirectory(profile), 'node_modules', name)
-  let entry: string | null = null
+  let required: string[] = []
   try {
-    const meta = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
-      main?: unknown
-      exports?: unknown
-    }
-    entry = resolvePackageEntry(meta)
+    required = requiredDistributionFiles(JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as Record<string, unknown>)
   } catch {
     return { name, missing: null }
   }
-  try {
-    return { name, missing: statSync(join(pkgDir, entry)).isFile() ? null : entry }
-  } catch {
-    return { name, missing: entry }
+  for (const file of required) {
+    try {
+      if (!statSync(join(pkgDir, file)).isFile()) return { name, missing: file }
+    } catch {
+      return { name, missing: file }
+    }
   }
+  return { name, missing: null }
 }
 
 /** 从 pnpm `Ignored build scripts:` 提示行解析被拦截的构建脚本 key（name@version，逗号分隔）。 */
@@ -749,21 +750,21 @@ export async function runPluginMutation(options: {
       }
     }
   }
-  // pnpm 安装本身成功，但目标包入口文件缺失（git 分发缺构建产物）→ 判为失败：
+  // pnpm 安装本身成功，但目标包声明分发的文件缺失（git 分发缺构建产物 / 缺声明的补丁）→ 判为失败：
   // 撤销刚登记的待重启，避免用户重启时宿主加载残缺包直接崩溃。
   // 全局 npm 安装不进 profile（profile deps 里没有这些包），跳过入口校验
   if (options.action !== 'remove' && result.exitCode === 0 && !result.timedOut && (options.globalNpm ?? []).length === 0) {
     const verified = verifyInstalledEntry(options.profile, options.target)
     if (verified.name !== null && verified.missing !== null) {
       clearPendingRestart(options.displayTarget ?? options.target)
-      const detail = `[packaging] ${verified.name}: entry file missing: ${verified.missing} (git distribution lacks build output — install the npm version or report to the author)`
+      const detail = `[packaging] ${verified.name}: declared file missing: ${verified.missing} (git distribution lacks build output — install the npm version or report to the author)`
       if (options.task && options.task.status !== 'cancelled') {
         options.task.status = 'failed'
         options.task.exitCode = null
         options.task.progress = 0
         pushLine(options.task, detail)
       }
-      return { exitCode: 1, timedOut: false, error: `entry file missing: ${verified.missing}`, stdout: result.stdout, stderr: `${result.stderr}\n${detail}` }
+      return { exitCode: 1, timedOut: false, error: `declared file missing: ${verified.missing}`, stdout: result.stdout, stderr: `${result.stderr}\n${detail}` }
     }
   }
   // npm arborist edgesOut 崩溃 + 本机 npm 版本过低 → 追加 [npm-too-low] 标记，前端据此给准确原因

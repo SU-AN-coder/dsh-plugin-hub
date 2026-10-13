@@ -268,17 +268,17 @@ export function registerInstallRoutes(webServer: WebServerService, profile: stri
               return
             }
           }
-          // 安装前预检：仅新安装走预检（github 源分发改入口文件缺失时直接拦截）。
+          // 安装前预检：仅新安装走预检（github 源分发缺 package.json 声明的文件时直接拦截）。
           // 更新是已信任目标的覆盖重装，跳过预检避免重复下载 tarball。
           // npm 包信任 registry 直接放行；github 源拦截时标记 [packaging] 前缀，
           // 供客户端归类为「插件分发不完整」并引导去仓库提 Issue
           if (already === null) {
             const preflight = await preflightTarget(target)
             if (!preflight.ok) {
-              // 预检拦截（git 分发缺入口文件）：同步 400 返回，附上已尝试的安装方式，
+              // 预检拦截（git 分发缺作者声明的文件）：同步 400 返回，附上已尝试的安装方式，
               // 客户端失败弹窗提 Issue 时一并贴给作者
               sendJson(response, 400, {
-                error: `[packaging] ${target}: plugin distribution is incomplete — the entry file ${preflight.missing ?? '?'} declared in package.json is not present in the git distribution (build output not committed). Report to the author.`,
+                error: `[packaging] ${target}: plugin distribution is incomplete — the file ${preflight.missing ?? '?'} declared in package.json (main / exports / dsh.bundle.patch) is not present in the git distribution (build output not committed). Report to the author.`,
                 attempts,
               })
               return
