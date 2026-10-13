@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { requiredDistributionFiles, resolveBundlePatchFiles, resolvePackageEntry } from '../src/server/services/install/package-entry.ts'
+import { mountsItself, patchRowNamesOf, requiredDistributionFiles, resolveBundlePatchFiles, resolvePackageEntry } from '../src/server/services/install/package-entry.ts'
 
 test('resolvePackageEntry: strips the mandatory ./ prefix from exports string targets', () => {
   assert.equal(resolvePackageEntry({ exports: { '.': './lib/index.js' } }), 'lib/index.js')
@@ -51,5 +51,47 @@ test('requiredDistributionFiles: the declared entry first, then the declared bun
   assert.deepEqual(
     requiredDistributionFiles({ main: './lib/index.js', dsh: { bundle: { patch: './cordis.patch.yml' } } }),
     ['lib/index.js', 'cordis.patch.yml'],
+  )
+})
+
+// The patch below is the one the market reports against (QingYunA/answer-me-with-html): it mounts a
+// dsh-internal provider and only mentions its own name as a config value, so it mounts no module of
+// its own and its package needs no entry.
+const SKILL_BUNDLE_PATCH = [
+  '- insert:',
+  '    - id: answer-me-with-html-skill',
+  "      name: '@deepseek-ai/dsh-skill-filesystem'",
+  '      config:',
+  '        providerName: answer-me-with-html',
+  '        includeDefaultRoots: false',
+  "        bundledSkillDir: !!js process.getBuiltinModule('node:path').join(root, 'answer-me-with-html/package.json')",
+].join('\n')
+
+// The pattern dsh's "Packaging and installing a plugin" guide shows: the row names the package itself.
+const SELF_MOUNTING_PATCH = ['- insert:', '    - id: hello', '      name: dsh-hello-plugin'].join('\n')
+
+test('patchRowNamesOf: reads the row names it can recognise, and nothing else', () => {
+  assert.deepEqual(patchRowNamesOf(SKILL_BUNDLE_PATCH), ['@deepseek-ai/dsh-skill-filesystem'])
+  assert.deepEqual(patchRowNamesOf(SELF_MOUNTING_PATCH), ['dsh-hello-plugin'])
+  assert.deepEqual(patchRowNamesOf(['- id: tool', "  name: '@deepseek-ai/dsh-tool-present'"].join('\n')), ['@deepseek-ai/dsh-tool-present'])
+  assert.deepEqual(patchRowNamesOf(''), [])
+})
+
+test('mountsItself: only a row naming this package counts', () => {
+  const manifest = { name: 'answer-me-with-html', dsh: { bundle: { patch: './cordis.patch.yml' } } }
+  assert.equal(mountsItself(manifest, [SKILL_BUNDLE_PATCH]), false)
+  assert.equal(mountsItself(manifest, []), false)
+  assert.equal(mountsItself({}, [SELF_MOUNTING_PATCH]), false)
+  assert.equal(mountsItself({ name: 'dsh-hello-plugin' }, [SELF_MOUNTING_PATCH]), true)
+})
+
+test('requiredDistributionFiles: a patch that mounts the package itself brings the entry back', () => {
+  const manifest = { name: 'dsh-hello-plugin', dsh: { bundle: { patch: './cordis.patch.yml' } } }
+  assert.deepEqual(requiredDistributionFiles(manifest), ['cordis.patch.yml'])
+  assert.deepEqual(requiredDistributionFiles(manifest, [SKILL_BUNDLE_PATCH]), ['cordis.patch.yml'])
+  assert.deepEqual(requiredDistributionFiles(manifest, [SELF_MOUNTING_PATCH]), ['index.js', 'cordis.patch.yml'])
+  assert.deepEqual(
+    requiredDistributionFiles({ name: 'dsh-hello-plugin', main: './lib/index.js', dsh: { bundle: { patch: './p.yml' } } }, [SELF_MOUNTING_PATCH]),
+    ['lib/index.js', 'p.yml'],
   )
 })

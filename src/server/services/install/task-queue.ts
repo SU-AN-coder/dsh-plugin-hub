@@ -8,7 +8,7 @@
  * 输出流式收集到任务上；卸载成功时尝试从运行中 loader 即时停用（见 loader.ts）。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { requiredDistributionFiles } from './package-entry.ts'
+import { requiredDistributionFiles, resolveBundlePatchFiles, type PackageManifest } from './package-entry.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { InstallResult, InstallTask, Invocation, QueueItem } from './install-types.ts'
@@ -649,7 +649,16 @@ export function verifyInstalledEntry(profile: string, target: string): { name: s
   const pkgDir = join(profileDirectory(profile), 'node_modules', name)
   let required: string[] = []
   try {
-    required = requiredDistributionFiles(JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as Record<string, unknown>)
+    const meta = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as PackageManifest
+    // 补丁按本包名 mount 自己时入口也是必须的，所以先读已装包里的补丁（读不到就当没有）。
+    const patchTexts = resolveBundlePatchFiles(meta).flatMap((file) => {
+      try {
+        return [readFileSync(join(pkgDir, file), 'utf8')]
+      } catch {
+        return []
+      }
+    })
+    required = requiredDistributionFiles(meta, patchTexts)
   } catch {
     return { name, missing: null }
   }

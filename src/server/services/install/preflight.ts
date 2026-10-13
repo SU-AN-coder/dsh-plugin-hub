@@ -19,7 +19,7 @@ import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import { githubRefOf, githubRepoOf } from '../profile/profile.ts'
 import { githubReleaseTarget } from './release-target.ts'
-import { requiredDistributionFiles } from './package-entry.ts'
+import { requiredDistributionFiles, resolveBundlePatchFiles } from './package-entry.ts'
 
 const execFileAsync = promisify(execFile)
 
@@ -59,8 +59,14 @@ export async function preflightTarget(target: string): Promise<PreflightResult> 
     const meta = await readTarJson(tar, rootPackage)
     if (meta === null) return { ok: true, missing: null, name: null }
     // 只校验作者声明过的文件：没声明入口的包（只挂技能的 bundle）没有可缺失的入口，
-    // 它的分发是否完整由 dsh.bundle.patch 是否在包里决定。
-    const required = requiredDistributionFiles(meta).map((file) => `${rootPrefix}${file}`)
+    // 它的分发是否完整由 dsh.bundle.patch 是否在包里决定；补丁若按本包名 mount 自己，
+    // 入口又变成必须的（宿主会 import 本包）—— 所以判入口前先把补丁读出来。
+    const patchTexts: string[] = []
+    for (const file of resolveBundlePatchFiles(meta)) {
+      const text = await readTarText(tar, `${rootPrefix}${file}`)
+      if (text !== null) patchTexts.push(text)
+    }
+    const required = requiredDistributionFiles(meta, patchTexts).map((file) => `${rootPrefix}${file}`)
     const missing = missingDistributionFileOfTarList(await tarListing(tar), required)
     return { ok: missing === null, missing, name: typeof meta.name === 'string' ? meta.name : null }
   } catch {
@@ -156,11 +162,22 @@ async function tarListing(tar: string): Promise<string | null> {
   }
 }
 
-/** 从 tarball 提取并解析一个 JSON 文件；文件不存在或解析失败返回 null。 */
-async function readTarJson(tar: string, entry: string): Promise<Record<string, unknown> | null> {
+/** 从 tarball 提取一个文件的内容；文件不存在或提取失败返回 null。 */
+async function readTarText(tar: string, entry: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync('tar', ['-xzOf', tar, entry], { maxBuffer: 4 * 1024 * 1024 })
-    return JSON.parse(stdout) as Record<string, unknown>
+    return stdout
+  } catch {
+    return null
+  }
+}
+
+/** 从 tarball 提取并解析一个 JSON 文件；文件不存在或解析失败返回 null。 */
+async function readTarJson(tar: string, entry: string): Promise<Record<string, unknown> | null> {
+  const text = await readTarText(tar, entry)
+  if (text === null) return null
+  try {
+    return JSON.parse(text) as Record<string, unknown>
   } catch {
     return null
   }

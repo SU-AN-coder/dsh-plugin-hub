@@ -22,7 +22,7 @@ services/install/
   install.ts                对外统一出口（纯 re-export，聚合下面的模块）
   install-types.ts          公共类型与常量（InstallTask / InstallResult / 上限值）
   task-queue.ts             后台任务：内存注册表 + FIFO 串行 worker + 子进程生命周期
-  preflight.ts              装前预检：拉 GitHub tarball 核对 package.json 声明的文件（入口 / bundle 补丁）是否真的在分发里
+  preflight.ts              装前预检：拉 GitHub tarball 核对插件需要的文件（声明的入口 / bundle 补丁，以及补丁 mount 的入口）是否真的在分发里
   npm-resolve.ts            按 repository 反查官方 npm 包（git 分发残缺时切 npm 通道）
   npm-check.ts              识别「本机 npm 版本过低」导致的失败并打标记
   package-entry.ts          从 package.json 推分发必须包含的文件（入口 + dsh.bundle.patch；预检与装后校验共用口径）

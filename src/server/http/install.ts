@@ -278,7 +278,7 @@ export function registerInstallRoutes(webServer: WebServerService, profile: stri
               // 预检拦截（git 分发缺作者声明的文件）：同步 400 返回，附上已尝试的安装方式，
               // 客户端失败弹窗提 Issue 时一并贴给作者
               sendJson(response, 400, {
-                error: `[packaging] ${target}: plugin distribution is incomplete — the file ${preflight.missing ?? '?'} declared in package.json (main / exports / dsh.bundle.patch) is not present in the git distribution (build output not committed). Report to the author.`,
+                error: `[packaging] ${target}: plugin distribution is incomplete — the file ${preflight.missing ?? '?'} the package needs (its declared entry, an entry a bundled patch mounts, or the patch itself) is not present in the git distribution (build output not committed). Report to the author.`,
                 attempts,
               })
               return

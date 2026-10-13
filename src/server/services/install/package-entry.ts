@@ -11,6 +11,10 @@
  * 补丁文件（官方 bundleManifest 的注释即「Read bundle metadata without loading its
  * JavaScript」），从不 import 包本身。凭空要求一个作者没声明的入口，只会把完整的
  * 技能包判成分发残缺，并把一条假缺陷推到作者仓库（见 QingYunA/answer-me-with-html#209）。
+ *
+ * 例外是补丁自己 mount 了本包：dsh 的《打包与安装插件》里组合包的常规写法就是
+ * `- insert: - name: <本包名>`，宿主随后按包名 import 本包，入口那时必须存在。
+ * 所以只有补丁真的写了自己的包名，才把这个入口算进分发要求。
  */
 
 /** exports 条件对象里按优先级尝试的键；Node 语义下 default 最宽，import/require 次之。 */
@@ -18,6 +22,7 @@ const EXPORT_CONDITION_KEYS = ['default', 'import', 'require'] as const
 
 /** 解析所需的 manifest 字段；其余字段不读。 */
 export interface PackageManifest {
+  name?: unknown
   main?: unknown
   exports?: unknown
   dsh?: unknown
@@ -58,10 +63,34 @@ export function resolveBundlePatchFiles(meta: PackageManifest): string[] {
     .map(stripDotSlash)
 }
 
-/** 分发里必须存在的全部文件：作者声明的入口，加上 bundle 声明的补丁，入口在前。 */
-export function requiredDistributionFiles(meta: PackageManifest): string[] {
-  const entry = resolvePackageEntry(meta)
+/** 分发里必须存在的全部文件：作者声明的入口，加上 bundle 声明的补丁，入口在前。
+ *  manifest 没声明入口时才看补丁：补丁按本包名 mount 自己（下面 mountsItself），
+ *  宿主就会 import 本包，Node 的旧式解析落到 index.js —— 那个入口同样必须有。 */
+export function requiredDistributionFiles(meta: PackageManifest, patchTexts: string[] = []): string[] {
+  const declared = resolvePackageEntry(meta)
+  const entry = declared ?? (mountsItself(meta, patchTexts) ? 'index.js' : null)
   return [...(entry === null ? [] : [entry]), ...resolveBundlePatchFiles(meta)]
+}
+
+/**
+ * 补丁文本里插件行的 `name:` 值（DSH 补丁按行书写：`- name: <pkg>` / `  name: <pkg>`）。
+ * 刻意不做 YAML 解析：只认这一种行形状，认不出来就不判定 —— 漏判只是少一条要求，
+ * 误判会拦下能装的包，两边的代价不对称。
+ */
+export function patchRowNamesOf(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => /^\s*(?:-\s*)?name:\s*(.+?)\s*$/u.exec(line)?.[1])
+    .filter((value): value is string => value !== undefined)
+    .map((value) => value.replace(/^(['"])(.*)\1$/u, '$2'))
+    .filter((value) => value !== '')
+}
+
+/** 补丁是否把本包自己 mount 进树（dsh 文档里组合包的常规写法），是则宿主会 import 本包。 */
+export function mountsItself(meta: PackageManifest, patchTexts: string[]): boolean {
+  const name = meta.name
+  if (typeof name !== 'string' || name === '') return false
+  return patchTexts.some((text) => patchRowNamesOf(text).includes(name))
 }
 
 function firstStringOf(conditions: Record<string, unknown>): string | undefined {
