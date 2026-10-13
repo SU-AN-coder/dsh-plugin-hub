@@ -63,7 +63,7 @@ npm run test:watch    # 监听模式
 | 文件 | 覆盖 |
 | --- | --- |
 | `progress.test.ts` | 进度估算与输出清洗 |
-| `preflight.test.ts` · `package-entry.test.ts` | 装前预检与入口路径推导 |
+| `preflight.test.ts` · `package-entry.test.ts` | 装前预检与分发文件推导 |
 | `npm-resolve.test.ts` | npm 反查与元数据校验 |
 | `release-target.test.ts` | release 直链解析与安全校验 |
 | `install-target.test.ts` | 安装目标语法解析 |

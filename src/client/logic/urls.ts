@@ -80,13 +80,13 @@ function reasonTitleOf(kind: FailureKind): string {
 export function pluginIssueUrl(repo: string, message: string, env?: EnvInfo | null, command?: string, attempts?: string[]): string {
   // 原因判定：按失败类型归类，便于作者判断问题是否出在插件侧。
   // [packaging]（预检/装后校验拦截）单独列：无论走 npm 还是 git 通道，都是分发物不完整
-  // （package.json 声明的入口文件在发布物里缺失），作者照此补齐即可。
+  // （package.json 声明的文件在发布物里缺失），作者照此补齐即可。
   const kind = classifyFailure(message)
   const executed = executedCommandOf(command, attempts)
   // 标题 = 错误原因（非动作词），让 issue 列表一眼可分流
   const title = `[dsh-plugin.org | dsh-plugin-hub] ${reasonTitleOf(kind)}: ${repo}`
   const reason = /\[packaging\]/i.test(message)
-    ? 'plugin distribution is incomplete — the entry file declared in package.json is missing from the published package (github tarball or npm package); please commit build output or publish a complete package'
+    ? 'plugin distribution is incomplete — a file declared in package.json (main / exports / dsh.bundle.patch) is missing from the published package (github tarball or npm package); please commit build output or publish a complete package'
       : kind === 'network'
         ? 'network connectivity issue on the user side (DNS, proxy, firewall, or a blocked connection)'
         : kind === 'pluginPrepare'
@@ -132,7 +132,7 @@ export function pluginIssueUrl(repo: string, message: string, env?: EnvInfo | nu
         ? [
           '',
           '## 安装方式说明',
-          'DSH 插件支持三种官方安装通道：`dsh plugin add <npm-package>`（npm 分发，需发布完整构建产物）、`dsh plugin add git+https://github.com/owner/repo.git`（Git 直装，仓库需提交构建产物），以及预构建 release 包 `dsh plugin add https://github.com/owner/repo/releases/download/<tag>/<asset>.tgz`（仓库不便提交构建产物时的推荐方式）。注意：pnpm ≥10 默认拦截依赖构建脚本，Git 直装不会执行包内 `prepare`，请勿依赖它生成产物。当前插件的分发物缺少 package.json 声明的入口文件，请提交构建产物、改用 release `.tgz` 直链，或发布完整的 npm 包。',
+          'DSH 插件支持三种官方安装通道：`dsh plugin add <npm-package>`（npm 分发，需发布完整构建产物）、`dsh plugin add git+https://github.com/owner/repo.git`（Git 直装，仓库需提交构建产物），以及预构建 release 包 `dsh plugin add https://github.com/owner/repo/releases/download/<tag>/<asset>.tgz`（仓库不便提交构建产物时的推荐方式）。注意：pnpm ≥10 默认拦截依赖构建脚本，Git 直装不会执行包内 `prepare`，请勿依赖它生成产物。当前插件的分发物缺少 package.json 声明的文件（`main` / `exports` 声明的入口，或 `dsh.bundle.patch` 声明的补丁），请提交构建产物、改用 release `.tgz` 直链，或发布完整的 npm 包。',
         ]
         : []),
       '',

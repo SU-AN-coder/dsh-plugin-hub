@@ -22,10 +22,10 @@ services/install/
   install.ts                对外统一出口（纯 re-export，聚合下面的模块）
   install-types.ts          公共类型与常量（InstallTask / InstallResult / 上限值）
   task-queue.ts             后台任务：内存注册表 + FIFO 串行 worker + 子进程生命周期
-  preflight.ts              装前预检：拉 GitHub tarball 核对入口文件是否真的在分发里
+  preflight.ts              装前预检：拉 GitHub tarball 核对 package.json 声明的文件（入口 / bundle 补丁）是否真的在分发里
   npm-resolve.ts            按 repository 反查官方 npm 包（git 分发残缺时切 npm 通道）
   npm-check.ts              识别「本机 npm 版本过低」导致的失败并打标记
-  package-entry.ts          从 package.json 推入口文件路径（预检与装后校验共用口径）
+  package-entry.ts          从 package.json 推分发必须包含的文件（入口 + dsh.bundle.patch；预检与装后校验共用口径）
   release-target.ts         目录下发的 release 直链解析与安全校验
 services/profile/
   profile.ts                profile 解析、目标语法校验、pnpm allowBuilds 白名单写入
@@ -70,7 +70,8 @@ services/settings.ts        设置持久化：profiles/<p>/hub-settings.json
 1. **校验与解析**（`routes.ts` → `profile.ts`）：仓库/包名格式、profile 名、
    同目标去重（`hasQueuedTarget`）、包名冲突检测。
 2. **装前预检**（`preflight.ts`）：GitHub 源先 `git ls-remote` 定位 commit、
-   下载 `codeload` tarball，核对 `package.json` 声明的入口文件是否真在分发里 ——
+   下载 `codeload` tarball，核对 `package.json` 声明的文件（入口，以及 bundle
+   声明的补丁）是否真在分发里 ——
    git 分发经常不提交构建产物，这类残缺包在动手安装前就拦下。
 3. **npm 反查**（`npm-resolve.ts`）：预检不通过时按 `repository` 字段反查该仓库的
    官方 npm 包，命中就切到 npm 通道安装。
@@ -80,7 +81,7 @@ services/settings.ts        设置持久化：profiles/<p>/hub-settings.json
    （`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` / `ERR_PNPM_IGNORED_BUILDS`）时写入
    profile 的 `pnpm-workspace.yaml` 后重试一次；全局 npm 安装撞上 npm arborist
    peer-set 崩溃时带 `--legacy-peer-deps` 重试一次。
-5. **装后校验与收尾**（`task-queue.ts` + `loader.ts`）：校验入口文件真实存在
+5. **装后校验与收尾**（`task-queue.ts` + `loader.ts`）：校验声明的分发文件真实存在
    （缺失即判失败并撤销待重启，避免重启时加载残缺包直接崩溃），再尝试热挂载 /
    停用 loader 条目，最后判定「是否需要刷新 / 是否需要重启」（见下）。
 

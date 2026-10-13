@@ -317,8 +317,8 @@ export const zh = {
   failUnclassifiedHint: '安装失败，原因未能自动识别。这通常不是插件自身的问题（可能与本机环境或插件中心有关），请将错误信息反馈给插件中心，由维护者排查。',
   // prepare 构建脚本实际执行失败（git 分发缺子模块/构建产物）：插件打包分发问题，应提 Issue
   failPrepareHint: '该插件安装时的构建脚本执行失败（git 分发常缺失子模块或构建产物），属插件打包分发问题。请向作者仓库提交 Issue 反馈。',
-  // 安装前预检 / 装后校验拦截（[packaging]）：git 分发缺构建产物、入口文件不存在 = 插件未适配官方默认安装方式
-  failPackagingHint: '该插件不支持官方默认安装方式：其 git 分发缺少构建产物（package.json 声明的入口文件在仓库中不存在），说明作者未适配官方安装流程。请到作者仓库提交 Issue 反馈，请其提交构建产物、改用预构建 release `.tgz` 直链（`releases/download/<tag>/<asset>.tgz`），或发布完整的 npm 版。',
+  // 安装前预检 / 装后校验拦截（[packaging]）：git 分发缺 package.json 声明的文件（入口 / bundle 补丁）= 插件未适配官方默认安装方式
+  failPackagingHint: '该插件不支持官方默认安装方式：其 git 分发缺少 package.json 声明的文件（`main` / `exports` 声明的入口，或 `dsh.bundle.patch` 声明的补丁），说明作者未适配官方安装流程。请到作者仓库提交 Issue 反馈，请其提交构建产物、改用预构建 release `.tgz` 直链（`releases/download/<tag>/<asset>.tgz`），或发布完整的 npm 版。',
   // 原生依赖构建脚本被 pnpm 默认拦截（如 node-pty 的 ERR_PNPM_IGNORED_BUILDS）：不单独算插件问题，引导到插件中心仓库排查
   failIgnoredBuild: '该插件或其依赖需要执行构建脚本，被 pnpm 的安全白名单（allowBuilds）默认拦截导致安装失败（如原生模块 node-pty、或 git 安装时插件的 prepare 脚本）。这不一定是插件自身的问题（也可能是插件中心反查失败后回退到 git 安装所致），请先反馈给插件中心排查；若确认为插件依赖问题，可建议作者改用预编译版本（如 node-pty-prebuilt-multiarch）或移除安装期构建。',
   // npm arborist 内部崩溃（edgesOut）＋ 本机 npm 版本过低：npm 自身已知缺陷，不是插件问题，升级 npm 即可
@@ -715,8 +715,8 @@ export const en = {
   failUnclassifiedHint: 'The install failed and the cause could not be identified automatically. This is usually not the plugin itself (it may relate to your local environment or the Plugin Hub). Please report the error to the Plugin Hub so the maintainers can triage it.',
   // prepare script actually failed (git tarball misses submodules/build output): a packaging issue of the plugin itself — file an issue
   failPrepareHint: 'This plugin failed while running its build scripts during install (git tarballs often miss submodules or build output). This is a packaging issue of the plugin itself — please report it to the author repository.',
-  // Pre-install / post-install guard hit ([packaging]): git distribution lacks build output, entry file missing = not adapted to the official default install method
-  failPackagingHint: 'This plugin does not support the official default install method: its git distribution lacks the build output (the entry file declared in package.json is not in the repository), so it has not been adapted to the official install flow. Please file an Issue on the author\'s repo asking for committed build output, a prebuilt release `.tgz` (`releases/download/<tag>/<asset>.tgz`), or a complete npm release.',
+  // Pre-install / post-install guard hit ([packaging]): git distribution lacks a file declared in package.json (entry / bundle patch) = not adapted to the official default install method
+  failPackagingHint: 'This plugin does not support the official default install method: its git distribution lacks a file declared in package.json (the entry from `main` / `exports`, or the patch declared by `dsh.bundle.patch`), so it has not been adapted to the official install flow. Please file an Issue on the author\'s repo asking for committed build output, a prebuilt release `.tgz` (`releases/download/<tag>/<asset>.tgz`), or a complete npm release.',
   // native-module build scripts ignored by pnpm by default (e.g. node-pty, ERR_PNPM_IGNORED_BUILDS): not a plugin-side issue on its own, route to the hub repo for triage
   failIgnoredBuild: 'This plugin (or its dependencies) needs to run build scripts, which pnpm blocks by default via its allowBuilds allowlist, so the install fails (e.g. native modules like node-pty, or the plugin\'s own prepare script on git installs). This is not necessarily the plugin itself (it may be caused by the hub falling back to a git install after npm lookup failed). Please report it to the Plugin Hub first; if it turns out to be a plugin dependency issue, the author can ship a prebuilt variant (e.g. node-pty-prebuilt-multiarch) or drop install-time builds.',
   failNpmTooLow: 'Your local npm may be too old: npm crashed internally while resolving the plugin\'s dependencies (a known npm bug — not a plugin issue). Please upgrade npm and retry: npm install -g npm@latest',
